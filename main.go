@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"sync"
 )
 
@@ -19,7 +20,8 @@ func main() {
 	mux.HandleFunc("/", handleRoot)
 
 	mux.HandleFunc("POST /users", createUser)
-
+	mux.HandleFunc("GET /users/{id}", getUser)
+	mux.HandleFunc("DELETE /users/{id}", delUser)
 	fmt.Println("Server is running on port 4032")
 	http.ListenAndServe(":4032", mux)
 }
@@ -45,6 +47,49 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 	userCache[len(userCache)+1] = user
 	cacheMutex.Unlock()
 
-	
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func getUser(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(r.PathValue("id"))
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	cacheMutex.RLock()
+	user, ok := userCache[id]
+	cacheMutex.RUnlock()
+	if !ok {
+		http.Error(w, "User not found", http.StatusNotFound)
+
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	j, err := json.Marshal(user)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write(j)
+}
+
+func delUser(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if _, ok := userCache[id]; !ok {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	cacheMutex.Lock()
+	delete(userCache, id)
+	cacheMutex.Unlock()
+
 	w.WriteHeader(http.StatusNoContent)
 }
